@@ -1,3 +1,4 @@
+use std::char;
 use std::fmt::Debug;
 use std::ops::Range;
 use thiserror::Error;
@@ -90,7 +91,7 @@ impl Parser {
                     exprs.push(block_expr);
                 }
                 b']' | b'}' => return Err(loc!(idx, idx, ParseError::UnmatchedRightBracket)),
-                c => {}
+                _ => {}
             }
         }
         Ok(exprs)
@@ -106,8 +107,38 @@ impl Parser {
         }
     }
 
+    fn expect_char(&mut self, expected_char: u8) -> Result<(), Loc<ParseError>> {
+        let (idx, c) = self.bump().ok_or_else(|| {
+            loc!(
+                self.source.len() - 1,
+                self.source.len() - 1,
+                ParseError::EndOfFile {
+                    expected: char::from_digit(expected_char as u32, 10)
+                        .unwrap()
+                        .to_string(),
+                }
+            )
+        })?;
+
+        if c == expected_char {
+            Ok(())
+        } else {
+            Err(loc!(
+                idx,
+                idx,
+                ParseError::UnexpectedChar {
+                    expected: (expected_char as char).to_string(),
+                    received: (c as char).to_string(),
+                }
+            ))
+        }
+    }
+
     fn parse_inline(&mut self, start_idx: usize) -> Result<Loc<Expr>, Loc<ParseError>> {
+        self.take_whitespace();
         let name = self.parse_name()?;
+        self.take_whitespace();
+
         Ok(loc!(
             start_idx,
             name.end,
@@ -120,7 +151,10 @@ impl Parser {
     }
 
     fn parse_block(&mut self, start_idx: usize) -> Result<Loc<Expr>, Loc<ParseError>> {
+        self.take_whitespace();
         let name = self.parse_name()?;
+        self.take_whitespace();
+        self.expect_char(b'|')?;
         Ok(loc!(
             start_idx,
             name.end,
